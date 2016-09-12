@@ -32,6 +32,12 @@ type IssuesService struct {
 	client *Client
 }
 
+// LabelItem ...
+type LabelItem struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
 // Issue represents a GitLab issue.
 //
 // GitLab API docs: http://doc.gitlab.com/ce/api/issues.html
@@ -44,6 +50,8 @@ type Issue struct {
 	Labels      []string `json:"labels"`
 	Milestone   struct {
 		ID          int        `json:"id"`
+		IID         int        `json:"iid"`
+		ProjectID   int        `json:"project_id"`
 		Title       string     `json:"title"`
 		Description string     `json:"description"`
 		DueDate     string     `json:"due_date"`
@@ -52,24 +60,52 @@ type Issue struct {
 		CreatedAt   *time.Time `json:"created_at"`
 	} `json:"milestone"`
 	Assignee struct {
-		ID        int        `json:"id"`
-		Username  string     `json:"username"`
-		Email     string     `json:"email"`
-		Name      string     `json:"name"`
-		State     string     `json:"state"`
-		CreatedAt *time.Time `json:"created_at"`
+		ID        int    `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		State     string `json:"state"`
+		AvatarURL string `json:"avatar_url"`
+		WebURL    string `json:"web_url"`
 	} `json:"assignee"`
 	Author struct {
-		ID        int        `json:"id"`
-		Username  string     `json:"username"`
-		Email     string     `json:"email"`
-		Name      string     `json:"name"`
-		State     string     `json:"state"`
-		CreatedAt *time.Time `json:"created_at"`
+		ID        int    `json:"id"`
+		Username  string `json:"username"`
+		Name      string `json:"name"`
+		State     string `json:"state"`
+		AvatarURL string `json:"avatar_url"`
+		WebURL    string `json:"web_url"`
 	} `json:"author"`
-	State     string     `json:"state"`
-	UpdatedAt *time.Time `json:"updated_at"`
-	CreatedAt *time.Time `json:"created_at"`
+	State          string      `json:"state"`
+	UpdatedAt      *time.Time  `json:"updated_at"`
+	CreatedAt      *time.Time  `json:"created_at"`
+	Subscribed     bool        `json:"subscribed"`
+	UserNotesCount int         `json:"user_notes_count"`
+	Upvotes        int         `json:"upvotes"`
+	Downvotes      int         `json:"downvotes"`
+	DueDate        string      `json:"due_date"`
+	LabelItems     []LabelItem `json:"label_items"`
+	Departments    []LabelItem `json:"departments"`
+	Priority       LabelItem   `json:"priority"`
+	Type           LabelItem   `json:"type"`
+	Status         LabelItem   `json:"status"`
+}
+
+// AddLabelItems ...
+func (i *Issue) AddLabelItems() {
+	for index := range i.Labels {
+		labels := strings.Split(i.Labels[index], ":")
+		labels = append(labels, "", "")
+		labelItem := LabelItem{labels[0], labels[1]}
+		i.LabelItems = append(i.LabelItems, labelItem)
+		switch labelItem.Type {
+		case "department":
+			i.Departments = append(i.Departments, labelItem)
+		case "priority":
+			i.Priority = labelItem
+		case "type":
+			i.Type = labelItem
+		}
+	}
 }
 
 func (i Issue) String() string {
@@ -105,13 +141,17 @@ func (s *IssuesService) ListIssues(opt *ListIssuesOptions) ([]*Issue, *Response,
 		return nil, nil, err
 	}
 
-	var i []*Issue
-	resp, err := s.client.Do(req, &i)
+	var issues []*Issue
+	resp, err := s.client.Do(req, &issues)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return i, resp, err
+	for i := range issues {
+		issues[i].AddLabelItems()
+	}
+
+	return issues, resp, err
 }
 
 // ListProjectIssuesOptions represents the available ListProjectIssues() options.
@@ -145,13 +185,17 @@ func (s *IssuesService) ListProjectIssues(
 		return nil, nil, err
 	}
 
-	var i []*Issue
-	resp, err := s.client.Do(req, &i)
+	var issues []*Issue
+	resp, err := s.client.Do(req, &issues)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	return i, resp, err
+	for i := range issues {
+		issues[i].AddLabelItems()
+	}
+
+	return issues, resp, err
 }
 
 // GetIssue gets a single project issue.
@@ -174,6 +218,7 @@ func (s *IssuesService) GetIssue(pid interface{}, issue int) (*Issue, *Response,
 	if err != nil {
 		return nil, resp, err
 	}
+	i.AddLabelItems()
 
 	return i, resp, err
 }
